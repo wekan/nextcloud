@@ -133,3 +133,25 @@ AI, Deck synchronization and file/calendar integrations are separate future work
 The wrapper is MIT licensed. The image includes WeKan and its dependencies under
 their respective licenses; the bundled FRP client is
 [Apache-2.0 licensed](https://github.com/fatedier/frp/blob/v0.61.1/LICENSE).
+
+## Acceptance tests
+
+Run `node --test tests/*.test.mjs` with `TMPDIR` pointing to the parent WeKan
+checkout's `.tools/tmp`. Gateway tests cover authenticated HTTP/WebSockets,
+readiness, rejected identities and persistent disable state, including an OCS
+failure during deregistration. Runtime tests launch real child processes and
+parse the FRP configuration independently; metadata guards check USER routes and
+the image's capability/privilege boundaries.
+
+The full native Nextcloud 32–35 browser matrix lives in the parent WeKan checkout:
+[setup, coverage and remaining container checks](https://github.com/wekan/wekan/blob/main/docs/Platforms/FOSS/Container/Docker/Nextcloud/README.md#local-and-deployment-validation).
+It uses real AppAPI/HaRP, WeKan and FerretDB under `.tools`, with UI uploads,
+private-board isolation, lifecycle operations, source-built upgrades and full
+volume restore. Published WeKan v12.32 needs the source transport bridge when
+used as the baseline: SockJS's default header allowlist drops the custom signed
+identity headers. New ExApp images must wrap a WeKan build containing that fix.
+
+The gateway strips ordinary Authorization credentials as well as AppAPI secrets
+before forwarding requests. Disabling is saved before menu deregistration, so an
+unavailable Nextcloud endpoint cannot restore the previous enabled state after a
+process restart.

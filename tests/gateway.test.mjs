@@ -22,9 +22,10 @@ test('AppAPI secret and app identity are mandatory; system identity is distinct'
 });
 test('proxy signs the verified user and removes injected identity and Nextcloud cookies', () => {
   const headers = proxyHeaders({ ...auth('alice'), 'x-wekan-nextcloud-user': 'mallory', 'x-forwarded-proto': 'http',
-    cookie: 'nc_session=secret; meteor_login_token=token', connection: 'x-extra', 'x-extra': 'remove' }, 'alice', config, 'key');
+    authorization: 'Basic nextcloud-app-password', cookie: 'nc_session=secret; meteor_login_token=token', connection: 'x-extra', 'x-extra': 'remove' }, 'alice', config, 'key');
   assert.equal(JSON.parse(Buffer.from(headers['x-wekan-nextcloud-user'], 'base64url')).userId, 'alice');
   assert.equal(headers['authorization-app-api'], undefined);
+  assert.equal(headers.authorization, undefined);
   assert.equal(headers['x-extra'], undefined);
   assert.equal(headers.cookie.trim(), 'meteor_login_token=token');
   assert.equal(headers['x-forwarded-proto'], 'https');

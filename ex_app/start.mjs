@@ -2,14 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import http from 'node:http';
 import net from 'node:net';
-import { spawn, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { configuration, createGateway } from './gateway.mjs';
+import { backendEnvironment, supervise, frpConfiguration } from './runtime.mjs';
 
 const config = configuration();
 const key = randomBytes(32).toString('hex');
-const children = new Set();
-let stopping = false;
 const uid = Number(execFileSync('id', ['-u', 'wekan'], { encoding: 'utf8' }).trim());
 const gid = Number(execFileSync('id', ['-g', 'wekan'], { encoding: 'utf8' }).trim());
 for (const dir of [config.storage, config.writable, path.join(config.writable, 'files'),
@@ -46,28 +45,6 @@ const databasePort = await freePort();
 if (databasePort === backendPort) throw new Error('Port allocation collision; restart container');
 const databaseDir = path.join(config.writable, 'files', 'db');
 
-function stop(code = 0) {
-  if (stopping) return;
-  stopping = true;
-  server.close();
-  for (const child of children) {
-    try { process.kill(-child.pid, 'SIGTERM'); } catch (_) { /* already exited */ }
-  }
-  const deadline = setTimeout(() => {
-    for (const child of children) { try { process.kill(-child.pid, 'SIGKILL'); } catch (_) { /* exited */ } }
-    process.exit(code);
-  }, 15000);
-  Promise.all([...children].map(child => new Promise(resolve => {
-    if (child.exitCode !== null || child.signalCode) resolve(); else child.once('exit', resolve);
-  }))).then(() => { clearTimeout(deadline); process.exit(code); });
-}
-function run(command, args, env) {
-  const child = spawn(command, args, { env, stdio: 'inherit', detached: true });
-  children.add(child);
-  child.once('error', () => { console.error('Could not start a required ExApp process'); stop(1); });
-  child.once('exit', () => { if (!stopping) { console.error('A required ExApp process exited'); stop(1); } });
-  return child;
-}
 const healthPath = config.publicUrl.pathname.replace(/\/$/, '') + '/_nextcloud/health';
 const server = createGateway({ config, key, backendPort, isReady: () => new Promise(resolve => {
   const request = http.get({ hostname: '127.0.0.1', port: backendPort, path: healthPath, timeout: 3000 }, response => {
@@ -76,6 +53,7 @@ const server = createGateway({ config, key, backendPort, isReady: () => new Prom
   });
   request.on('timeout', () => request.destroy()); request.on('error', () => resolve(false));
 }) });
+const { run, stop } = supervise(server);
 server.on('error', () => stop(1));
 process.on('SIGTERM', () => stop()); process.on('SIGINT', () => stop());
 
@@ -86,13 +64,7 @@ if (process.env.HP_SHARED_KEY) {
   try { fs.unlinkSync(sock); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   await new Promise(resolve => server.listen(sock, resolve));
   fs.chmodSync(sock, 0o600);
-  const quote = value => JSON.stringify(String(value));
-  const frpPort = Number(process.env.HP_FRP_PORT);
-  if (!process.env.HP_FRP_ADDRESS || !Number.isInteger(frpPort) || frpPort < 1 || frpPort > 65535) throw new Error('Invalid HaRP FRP address/port');
-  const tls = fs.existsSync('/certs/frp');
-  const content = `serverAddr = ${quote(process.env.HP_FRP_ADDRESS)}\nserverPort = ${frpPort}\nloginFailExit = false\n` +
-    `transport.tls.enable = ${tls}\n` + (tls ? `transport.tls.certFile = ${quote(path.join(frpCertDir, 'client.crt'))}\ntransport.tls.keyFile = ${quote(path.join(frpCertDir, 'client.key'))}\ntransport.tls.trustedCaFile = ${quote(path.join(frpCertDir, 'ca.crt'))}\ntransport.tls.serverName = "harp.nc"\n` : '') +
-    `metadatas.token = ${quote(process.env.HP_SHARED_KEY)}\n[[proxies]]\nremotePort = ${config.port}\ntype = "tcp"\nname = ${quote(config.appId)}\n[proxies.plugin]\ntype = "unix_domain_socket"\nunixPath = ${quote(sock)}\n`;
+  const content = frpConfiguration(config, process.env, sock, fs.existsSync('/certs/frp') ? frpCertDir : null);
   const frpConfig = path.join(config.storage, '.frpc.toml');
   fs.writeFileSync(frpConfig, content, { mode: 0o600 });
   run('/usr/local/bin/frpc', ['-c', frpConfig], process.env);
@@ -101,17 +73,7 @@ if (process.env.HP_SHARED_KEY) {
 }
 // Do not inherit AppAPI/FRP secrets in WeKan or FerretDB. The dedicated gateway
 // signing key is sufficient for Meteor to verify connection-bound identities.
-const appEnv = { ...process.env };
-for (const name of ['APP_SECRET', 'HP_SHARED_KEY', 'MONGO_URL_FILE', 'MONGO_OPLOG_URL']) delete appEnv[name];
-Object.assign(appEnv, {
-  NEXTCLOUD_EXAPP: 'true', WEKAN_NEXTCLOUD_PROXY_KEY: key, NEXTCLOUD_URL: config.nextcloudUrl,
-  NEXTCLOUD_ADMIN_USERS: JSON.stringify(config.admins), ROOT_URL: config.publicUrl.href,
-  PORT: String(backendPort), BIND_IP: '127.0.0.1', WRITABLE_PATH: config.writable,
-  WEKAN_DB: 'mongodb', MONGO_URL: `mongodb://127.0.0.1:${databasePort}/wekan`,
-  FERRETDB_SQLITE_DIR: databaseDir, DDP_TRANSPORT: 'sockjs',
-  METEOR_REACTIVITY_ORDER: 'polling', DEFAULT_METEOR_REACTIVITY_ORDER: 'polling',
-  HTTP_FORWARDED_COUNT: '0',
-});
+const appEnv = backendEnvironment(config, key, backendPort, databasePort);
 // Separate supervised child processes, in one AppAPI-managed container. Either
 // child exiting shuts down the whole container so Docker can restart it.
 const launcher = fs.existsSync('/build/cpu-exec') ? '/build/cpu-exec' : '/build/ferretdb';

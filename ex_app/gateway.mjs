@@ -49,7 +49,7 @@ export function proxyHeaders(headers, userId, config, key) {
   const hopHeaders = String(headers.connection || '').toLowerCase().split(',').map(s => s.trim());
   for (const name of Object.keys(result)) {
     if (name.startsWith('x-wekan-nextcloud-') || name.startsWith('x-forwarded-') ||
-        ['authorization-app-api', 'ex-app-id', 'ex-app-version', 'aa-version',
+        ['authorization', 'authorization-app-api', 'ex-app-id', 'ex-app-version', 'aa-version',
           'connection', 'upgrade', 'proxy-authorization', 'proxy-authenticate',
           'keep-alive', 'transfer-encoding', 'te', 'trailer', ...hopHeaders].includes(name)) delete result[name];
   }
@@ -127,6 +127,9 @@ export function createGateway({ config, key, backendPort, isReady, callOcs = (me
       // Disable immediately, even if deregistration subsequently fails.
       if (!enable) { enabled = false; for (const socket of sockets) socket.destroy(); }
       try {
+        // Persist denial before contacting Nextcloud: an unavailable OCS endpoint
+        // must not resurrect the previous enabled state on process restart.
+        if (!enable) fs.writeFileSync(enabledFile, JSON.stringify({ enabled: false }), { mode: 0o600 });
         const method = enable ? 'POST' : 'DELETE';
         await callOcs(method, 'api/v1/ui/top-menu', enable ? { name: 'wekan', displayName: 'WeKan', icon: 'img/app.svg', adminRequired: 0 } : { name: 'wekan' });
         await callOcs(method, 'api/v1/ui/script', { type: 'top_menu', name: 'wekan', path: 'js/menu.js' });
