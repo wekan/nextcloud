@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<info>
+  <id>wekan</id>
+  <name>WeKan</name>
+  <summary>Open source kanban boards with persistent SQLite storage</summary>
+  <description>WeKan boards, cards, swimlanes and attachments, with Nextcloud sign-in. Requires AppAPI and a HaRP deploy daemon. Stores WeKan data and FerretDB SQLite in the app's persistent volume.</description>
+  <version>12.29.0</version>
+  <licence>MIT</licence>
+  <author mail="x@xet7.org" homepage="https://wekan.fi">Lauri Ojansivu</author>
+  <namespace>Wekan</namespace>
+  <category>organization</category>
+  <website>https://wekan.fi</website>
+  <bugs>https://github.com/wekan/nextcloud/issues</bugs>
+  <repository type="git">https://github.com/wekan/nextcloud</repository>
+  <dependencies><nextcloud min-version="32" max-version="35"/></dependencies>
+  <external-app>
+    <docker-install>
+      <registry>ghcr.io</registry>
+      <image>wekan/wekan-exapp</image>
+      <image-tag>v12.29</image-tag>
+    </docker-install>
+    <environment-variables>
+      <variable>
+        <name>WEKAN_PUBLIC_URL</name>
+        <display-name>Public WeKan URL</display-name>
+        <description>Optional public HaRP URL ending in /exapps/wekan/. Set this when the deploy daemon's NEXTCLOUD_URL is an internal address. Otherwise it is derived from NEXTCLOUD_URL.</description>
+        <default></default>
+      </variable>
+      <variable>
+        <name>NEXTCLOUD_ADMIN_USERS</name>
+        <display-name>WeKan administrators</display-name>
+        <description>JSON array of exact Nextcloud user IDs, for example ["admin"]. Other users receive ordinary WeKan accounts; the first user is not automatically an administrator.</description>
+        <default>[]</default>
+      </variable>
+    </environment-variables>
+    <routes>
+      <route><url>^/.*</url><verb>GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS</verb><access_level>USER</access_level></route>
+    </routes>
+  </external-app>
+</info>
