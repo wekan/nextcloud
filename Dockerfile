@@ -1,5 +1,8 @@
 ARG WEKAN_VERSION=12.29
-FROM debian:bookworm-slim AS frp
+# The frp stage only downloads and checks a prebuilt frpc for the TARGET
+# architecture, so it runs on the build machine: no apt-get or curl under QEMU
+# for the arm64 image.
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS frp
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
 ARG TARGETARCH
 # HaRP's documented FRP protocol version, verified against upstream checksums.
