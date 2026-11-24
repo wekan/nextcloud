@@ -22,7 +22,9 @@ RUN set -eu; \
 FROM ghcr.io/wekan/wekan:v${WEKAN_VERSION}
 USER root
 # Older images cannot securely bind Meteor login to the AppAPI identity.
-RUN test -f /build/nextcloud-exapp-capability.json && test -x /build/ferretdb
+# Exec form with node: the WeKan image is distroless and has no shell for a
+# shell-form RUN. Every WeKan image, old or new, has /usr/local/bin/node.
+RUN ["/usr/local/bin/node", "-e", "const fs = require('fs'); fs.statSync('/build/nextcloud-exapp-capability.json'); fs.accessSync('/build/ferretdb', fs.constants.X_OK)"]
 COPY --from=frp /usr/local/bin/frpc /usr/local/bin/frpc
 COPY ex_app /opt/wekan-nextcloud/ex_app
 COPY licenses /usr/share/doc/wekan-nextcloud/licenses

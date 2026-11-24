@@ -80,4 +80,9 @@ const launcher = fs.existsSync('/build/cpu-exec') ? '/build/cpu-exec' : '/build/
 const dbArgs = ['--handler=sqlite', `--sqlite-url=file:${databaseDir}/`,
   `--listen-addr=127.0.0.1:${databasePort}`, '--telemetry=disable'];
 run(launcher, launcher.endsWith('cpu-exec') ? ['/build/ferretdb', ...dbArgs] : dbArgs, appEnv);
-run('bash', ['/build/wekan-entrypoint.sh'], appEnv);
+// The WeKan image is distroless since its Artifact Hub security report: no
+// bash, and a Node.js entrypoint. An older WeKan image keeps its shell one.
+const [entryCommand, entryArgs] = fs.existsSync('/build/wekan-entrypoint.mjs')
+  ? [process.execPath, ['/build/wekan-entrypoint.mjs']]
+  : ['bash', ['/build/wekan-entrypoint.sh']];
+run(entryCommand, entryArgs, appEnv);

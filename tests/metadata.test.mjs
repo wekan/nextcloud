@@ -25,11 +25,14 @@ test('the image requires the upstream capability and database and drops privileg
   const docker = fs.readFileSync(new URL('Dockerfile', root), 'utf8');
   const start = fs.readFileSync(new URL('ex_app/start.mjs', root), 'utf8');
   assert.match(docker, /nextcloud-exapp-capability\.json/);
-  assert.match(docker, /test -x \/build\/ferretdb/);
+  assert.match(docker, /fs\.accessSync\('\/build\/ferretdb', fs\.constants\.X_OK\)/);
   assert.match(docker, /COPY ex_app/);
   assert.ok(!docker.includes('/var/run/docker.sock'));
   assert.ok(start.indexOf('process.setgroups([])') < start.indexOf("run(launcher"));
-  assert.ok(start.indexOf('process.setuid(uid)') < start.indexOf("run('bash'"));
+  assert.ok(start.indexOf('process.setuid(uid)') < start.indexOf('run(entryCommand, entryArgs, appEnv)'));
+  // The distroless WeKan image has no bash: its Node.js entrypoint, when it is there.
+  assert.match(start, /fs\.existsSync\('\/build\/wekan-entrypoint\.mjs'\)\n\s+\? \[process\.execPath, \['\/build\/wekan-entrypoint\.mjs'\]\]/);
+  assert.doesNotMatch(docker.slice(docker.indexOf('FROM ghcr.io/wekan/wekan')), /^RUN (?!\[)/m, 'no shell-form RUN on the distroless WeKan image');
   assert.match(start, /fs\.chmodSync\(sock, 0o600\)/);
   assert.match(start, /fs\.writeFileSync\(frpConfig, content, \{ mode: 0o600 \}\)/);
   assert.match(start, /randomBytes\(32\)/);
